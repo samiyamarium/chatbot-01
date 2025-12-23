@@ -71,9 +71,9 @@ Question:
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-st.set_page_config(page_title="Book Chatbot", layout="centered")
+st.set_page_config(page_title="Book Chatbot by Samiya Marium", layout="centered")
 
-st.title("📘 Book Question Answering Bot")
+st.title("📘Physical-AI-Humanoid-Robotics")
 st.write("Ask questions strictly based on the book content.")
 
 question = st.text_input("Enter your question:")
