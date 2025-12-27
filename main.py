@@ -1,65 +1,100 @@
+import os
 import streamlit as st
-from agents import answer_question
+from qdrant_client import QdrantClient
+from google import genai
 
-# -------------------
-# Page config
-# -------------------
-st.set_page_config(
-    page_title="Book Chatbot",
-    page_icon="📘",
-    layout="centered"
+# Load secrets from Streamlit
+# ---------------------------
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+QDRANT_URL = st.secrets["QDRANT_URL"]
+QDRANT_API_KEY = st.secrets["QDRANT_API_KEY"]
+QDRANT_COLLECTION = st.secrets["QDRANT_COLLECTION"]
+
+# ---------------------------
+# Initialize clients
+# ---------------------------
+qdrant = QdrantClient(
+    url=QDRANT_URL,
+    api_key=QDRANT_API_KEY
 )
 
-st.title("📘 Academic Book Chatbot")
-st.caption("Powered by Gemini + Qdrant (Free Tier)")
+genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# -------------------
-# Session state
-# -------------------
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+# ---------------------------
+# Retriever (NO embeddings)
+# ---------------------------
+def retriever_agent(question: str):
+    hits, _ = qdrant.scroll(
+        collection_name=QDRANT_COLLECTION,
+        limit=10
+    )
 
-# -------------------
-# Input box
-# -------------------
-question = st.text_input(
-    "Ask a question from the book:",
-    placeholder="e.g. What are sensors in robotics?"
-)
+    matched = []
+    for point in hits:
+        text = point.payload.get("text", "")
+        if any(word.lower() in text.lower() for word in question.split()):
+            matched.append(point.payload)
 
-# -------------------
-# Ask button
-# -------------------
+    return matched[:3]
+
+# ---------------------------
+# Gemini LLM
+# ---------------------------
+def llm_agent(question: str, context_blocks):
+    if not context_blocks:
+        return "The book does not contain this information."
+
+    context = "\n\n".join(c["text"] for c in context_blocks)
+
+    prompt = f"""
+You are an academic book assistant.
+
+Rules:
+- Answer strictly from the provided book content
+- If the answer is not present, say:
+  "The book does not contain this information."
+
+Book Content:
+{context}
+
+Question:
+{question}
+"""
+
+    response = genai_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+
+    return response.text
+
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+st.set_page_config(page_title="Book Chatbot by Samiya Marium", layout="centered")
+
+st.title("📘Physical-AI-Humanoid-Robotics")
+st.write("Ask questions strictly based on the book content.")
+
+question = st.text_input("Enter your question:")
+
 if st.button("Ask"):
     if not question.strip():
         st.warning("Please enter a question.")
     else:
-        with st.spinner("Thinking..."):
-            try:
-                answer, sources = answer_question(question)
+        with st.spinner("Searching the book..."):
+            context_blocks = retriever_agent(question)
+            answer = llm_agent(question, context_blocks)
 
-                st.session_state.chat_history.append({
-                    "question": question,
-                    "answer": answer,
-                    "sources": sources
-                })
+            sources = list({
+                c.get("chapter_title", "Unknown")
+                for c in context_blocks
+            })
 
-            except Exception as e:
-                st.error(f"Error: {e}")
+        st.subheader("Answer")
+        st.write(answer)
 
-# -------------------
-# Display chat
-# -------------------
-for chat in reversed(st.session_state.chat_history):
-    st.markdown("### ❓ Question")
-    st.write(chat["question"])
-
-    st.markdown("### ✅ Answer")
-    st.write(chat["answer"])
-
-    if chat["sources"]:
-        st.markdown("### 📚 Sources")
-        for src in chat["sources"]:
-            st.markdown(f"- {src}")
-
-    st.divider()
+        if sources:
+            st.subheader("Sources")
+            for src in sources:
+                st.markdown(f"- {src}")
