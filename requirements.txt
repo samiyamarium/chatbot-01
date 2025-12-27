@@ -4,4 +4,6 @@ pydantic
 python-dotenv
 qdrant-client
 google-genai
+google-generativeai>=0.5.0
+
 
