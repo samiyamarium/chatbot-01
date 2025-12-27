@@ -1,6 +1,6 @@
 import streamlit as st
 from qdrant_client import QdrantClient
-import google.generativeai as genai
+import google.genai as genai
 
 # -------------------------------------------------
 # Streamlit security hardening
